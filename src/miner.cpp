@@ -74,19 +74,39 @@ int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParam
 
 BlockAssembler::Options::Options() {
     blockMinFeeRate = CFeeRate(DEFAULT_BLOCK_MIN_TX_FEE);
+    // All maximums are for a 1Mb block
     nBlockMaxWeight = DEFAULT_BLOCK_MAX_WEIGHT;
     nBlockMaxSize = DEFAULT_BLOCK_MAX_SIZE;
+    nBlockMaxSigopsCost = DEFAULT_BLOCK_MAX_SIGOPS_COST;
+    nBlockSizeLimit =1;
 }
 
 BlockAssembler::BlockAssembler(const CChainParams& params, const Options& options) : chainparams(params)
 {
     blockMinFeeRate = options.blockMinFeeRate;
-    // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
-    nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_WEIGHT - 4000, options.nBlockMaxWeight));
-    // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
-    nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
-    // Whether we need to account for byte usage (in addition to weight usage)
-    fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK_SERIALIZED_SIZE - 1000);
+    
+    // Unless specifically expanded by options, block created will be compliant with 1Mb blocks (not 2Mb blocks)
+    // This is to prevent any human mistake by wrongly setting the mining switches before the 2Mb fork actually takes place.
+    if (options.nBlockSizeLimit>=2) {
+	    // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
+	    nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_WEIGHT - 4000, options.nBlockMaxWeight));
+	    // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
+	    nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
+	    // Whether we need to account for byte usage (in addition to weight usage)
+	    fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK_SERIALIZED_SIZE - 1000);
+	    // Limit the number of sigops cost
+	    nBlockMaxSigopsCost = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_SIGOPS_COST, options.nBlockMaxSigopsCost));
+
+    } else
+    {      // For 1Mb blocks, use 1Mb restrictions
+	    // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
+	    nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK1_WEIGHT - 4000, options.nBlockMaxWeight));
+	    // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
+	    nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK1_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
+	    // Whether we need to account for byte usage (in addition to weight usage)
+	    fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK1_SERIALIZED_SIZE - 1000);
+	    nBlockMaxSigopsCost = MAX_BLOCK1_SIGOPS_COST;
+    }
 }
 
 static BlockAssembler::Options DefaultOptions(const CChainParams& params)
@@ -98,6 +118,9 @@ static BlockAssembler::Options DefaultOptions(const CChainParams& params)
     BlockAssembler::Options options;
     options.nBlockMaxWeight = DEFAULT_BLOCK_MAX_WEIGHT;
     options.nBlockMaxSize = DEFAULT_BLOCK_MAX_SIZE;
+    options.nBlockMaxSigopsCost = DEFAULT_BLOCK_MAX_SIGOPS_COST;
+    options.nBlockSizeLimit = 1;
+
     bool fWeightSet = false;
     if (IsArgSet("-blockmaxweight")) {
         options.nBlockMaxWeight = GetArg("-blockmaxweight", DEFAULT_BLOCK_MAX_WEIGHT);
@@ -109,6 +132,12 @@ static BlockAssembler::Options DefaultOptions(const CChainParams& params)
         if (!fWeightSet) {
             options.nBlockMaxWeight = options.nBlockMaxSize * WITNESS_SCALE_FACTOR;
         }
+    }
+    if (IsArgSet("-blockmaxsigops")) {
+        options.nBlockMaxSigopsCost = GetArg("-blockmaxsigops", DEFAULT_BLOCK_MAX_SIGOPS_COST/WITNESS_SCALE_FACTOR)* WITNESS_SCALE_FACTOR;
+    }
+    if (IsArgSet("-blocksizelimit")) {
+        options.nBlockSizeLimit = GetArg("-blocksizelimit", 1);
     }
     if (IsArgSet("-blockmintxfee")) {
         CAmount n = 0;
@@ -231,8 +260,10 @@ bool BlockAssembler::TestPackage(uint64_t packageSize, int64_t packageSigOpsCost
     // TODO: switch to weight-based accounting for packages instead of vsize-based accounting.
     if (nBlockWeight + WITNESS_SCALE_FACTOR * packageSize >= nBlockMaxWeight)
         return false;
-    if (nBlockSigOpsCost + packageSigOpsCost >= MAX_BLOCK_SIGOPS_COST)
+    if (nBlockSigOpsCost + packageSigOpsCost >= nBlockMaxSigopsCost) {
+        printf("nBlockMaxSigopsCost %d >= %d\n",nBlockSigOpsCost + packageSigOpsCost,nBlockMaxSigopsCost);
         return false;
+    }
     return true;
 }
 

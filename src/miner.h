@@ -141,7 +141,7 @@ private:
 
     // Configuration parameters for the block size
     bool fIncludeWitness;
-    unsigned int nBlockMaxWeight, nBlockMaxSize;
+    unsigned int nBlockMaxWeight, nBlockMaxSize,nBlockMaxSigopsCost;
     bool fNeedSizeAccounting;
     CFeeRate blockMinFeeRate;
 
@@ -163,6 +163,9 @@ public:
         Options();
         size_t nBlockMaxWeight;
         size_t nBlockMaxSize;
+	 size_t nBlockMaxSigopsCost;
+	 size_t nBlockSizeLimit; // 1 or 2 (in Mb)
+   
         CFeeRate blockMinFeeRate;
     };
 

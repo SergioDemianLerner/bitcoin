@@ -514,12 +514,15 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         // TODO: Maybe recheck connections/IBD and (if something wrong) send an expires-immediately template to stop miners?
     }
 
-    const struct BIP9DeploymentInfo& segwit_info = VersionBitsDeploymentInfo[Consensus::DEPLOYMENT_SEGWIT];
+    const struct BIP9DeploymentInfo& segwit_info1 = VersionBitsDeploymentInfo[Consensus::DEPLOYMENT_SEGWIT];
+    const struct BIP9DeploymentInfo& segwit_info2 = VersionBitsDeploymentInfo[Consensus::DEPLOYMENT_SEGWIT_AND_2MB_BLOCKS];
+	
     // If the caller is indicating segwit support, then allow CreateNewBlock()
     // to select witness transactions, after segwit activates (otherwise
     // don't).
-    bool fSupportsSegwit = setClientRules.find(segwit_info.name) != setClientRules.end();
-
+    bool fSupportsSegwit1 = setClientRules.find(segwit_info1.name) != setClientRules.end();
+    bool fSupportsSegwit2 = setClientRules.find(segwit_info2.name) != setClientRules.end();
+    bool fSupportsSegwit =  fSupportsSegwit1 || fSupportsSegwit2 ;
     // Update block
     static CBlockIndex* pindexPrev;
     static int64_t nStart;
@@ -557,7 +560,7 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
     pblock->nNonce = 0;
 
     // NOTE: If at some point we support pre-segwit miners post-segwit-activation, this needs to take segwit support into consideration
-    const bool fPreSegWit = (THRESHOLD_ACTIVE != VersionBitsState(pindexPrev, consensusParams, Consensus::DEPLOYMENT_SEGWIT, versionbitscache));
+    const bool fPreSegWit =  !IsWitnessEnabled(pindexPrev, consensusParams);
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
@@ -676,14 +679,16 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
     result.push_back(Pair("mintime", (int64_t)pindexPrev->GetMedianTimePast()+1));
     result.push_back(Pair("mutable", aMutable));
     result.push_back(Pair("noncerange", "00000000ffffffff"));
-    int64_t nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
+    int64_t nSigOpLimit;
     if (fPreSegWit) {
+        nSigOpLimit = MAX_BLOCK1_SIGOPS_COST;
         assert(nSigOpLimit % WITNESS_SCALE_FACTOR == 0);
         nSigOpLimit /= WITNESS_SCALE_FACTOR;
-    }
+    } else
+	nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
     result.push_back(Pair("sigoplimit", nSigOpLimit));
     if (fPreSegWit) {
-        result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_BASE_SIZE));
+        result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK1_BASE_SIZE));
     } else {
         result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SERIALIZED_SIZE));
         result.push_back(Pair("weightlimit", (int64_t)MAX_BLOCK_WEIGHT));
