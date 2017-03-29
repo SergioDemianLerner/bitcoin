@@ -94,6 +94,9 @@ TestingSetup::~TestingSetup()
         boost::filesystem::remove_all(pathTemp);
 }
 
+TestChainSetup::TestChainSetup() : TestingSetup(CBaseChainParams::REGTEST) {
+}
+
 TestChain100Setup::TestChain100Setup() : TestingSetup(CBaseChainParams::REGTEST)
 {
     // Generate a 100-block chain:

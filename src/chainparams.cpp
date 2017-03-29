@@ -274,7 +274,7 @@ public:
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1351; // BIP65 activated on regtest (Used in rpc activation tests)
         consensus.BIP66Height = 1251; // BIP66 activated on regtest (Used in rpc activation tests)
-        consensus.HardForkTime = 1800;
+        consensus.HardForkTime = 1509408000; // Tue, 31 Oct 2017 00:00:00 GMT
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
         consensus.nPowTargetSpacing = 10 * 60;
@@ -291,7 +291,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].bit = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nStartTime = 0;
         consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT].nTimeout = 999999999999ULL;
-
+        
+        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT_AND_2MB_BLOCKS].bit = 2;
+        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT_AND_2MB_BLOCKS].nStartTime = 1493424000; // April 29th, 2017.
+        consensus.vDeployments[Consensus::DEPLOYMENT_SEGWIT_AND_2MB_BLOCKS].nTimeout = 1503964800; // August 29th, 2017.
+	 
         // The best chain should have at least this much work.
         consensus.nMinimumChainWork = uint256S("0x00");
 

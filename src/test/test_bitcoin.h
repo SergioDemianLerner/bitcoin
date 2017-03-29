@@ -60,6 +60,13 @@ struct TestChain100Setup : public TestingSetup {
     CKey coinbaseKey; // private/public key needed to spend coinbase transactions
 };
 
+//
+// Empty REGTEST-mode block chain
+//
+struct TestChainSetup : public TestingSetup {
+    TestChainSetup();
+};
+
 class CTxMemPoolEntry;
 
 struct TestMemPoolEntryHelper
