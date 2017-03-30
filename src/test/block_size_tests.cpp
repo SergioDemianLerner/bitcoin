@@ -116,7 +116,6 @@
             while (!CheckProofOfWork(pblock->GetHash(), pblock->nBits, chainparams.GetConsensus())) ++pblock->nNonce;
             std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
             int prevHeight =  chainActive.Height();
-            std::cout << "height:" << chainActive.Height() << "\n";
             bool ret = ProcessNewBlock(chainparams, shared_pblock, true, NULL);
             // blocks of erroneous size produce internally a CValidationState.DoS with msg:
             // bad-blk-length / size limits failed
@@ -130,7 +129,7 @@
             }
             return ret;
         }
-//
+        //
 	// Unit test CheckBlock() for conditions around the block size hard fork
 	//
 	BOOST_AUTO_TEST_CASE(TwoMegFork)
