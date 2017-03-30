@@ -38,7 +38,7 @@
 	static void
 	FillBlock(CBlock& block, unsigned int nSize,uint256 txhash)
 	{
-	    assert(block.vtx.size() > 0); // Start with at least a coinbase
+            assert(block.vtx.size() >= 1); // Start with at least a coinbase
 
 	    unsigned int nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
 	    if (nBlockSize > nSize) {
@@ -62,8 +62,11 @@
 	    while (nBlockSize+nTxSize < nSize) {
 		block.vtx.push_back(MakeTransactionRef(tx));
 		nBlockSize += nTxSize;
-		tx.vin[0].prevout.hash = txhash; // ... just to make each transaction unique, it consumes the previous tx output
-		txhash = tx.GetHash();
+	    	txhash = tx.GetHash();
+		if (nBlockSize+nTxSize >= nSize)    break;
+	   	tx.vin[0].prevout.hash = txhash; // ... just to make each transaction unique, it consumes the previous tx output
+	    	txhash = tx.GetHash();
+
 	    }
 	    // Make the last transaction exactly the right size by making the scriptSig bigger.
 	    block.vtx.pop_back();
@@ -71,10 +74,12 @@
 	    unsigned int nFill = nSize - nBlockSize - nTxSize;
 	    for (unsigned int i = 0; i < nFill; i++)
 		tx.vin[0].scriptSig << OP_11;
+	    txhash = tx.GetHash();
 	    block.vtx.push_back(MakeTransactionRef(std::move(tx)));
 	    nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
 	    assert(nBlockSize == nSize);
 	}
+
 	bool  mineBlock(CBlock *pblock, const CChainParams& chainparams,uint256 & txhash);
 
 	static bool TestCheckBlock(CBlock& block, const CChainParams& params, uint64_t nTime, unsigned int nSize,uint256 txhash)
@@ -83,7 +88,7 @@
 	    block.nTime = nTime;
 	    FillBlock(block, nSize,txhash);
 	    bool fResult = mineBlock(&block, params,txhash);
-	    SetMockTime(0);
+            SetMockTime(0);
 	    return fResult;
 	}
 
@@ -91,7 +96,10 @@
 	{ 
 	  return ((uint32_t)1) << params.vDeployments[id].bit; 
 	}
-
+        
+        bool hfActive(int64_t HardForkTime) {
+              return chainActive.Tip()->GetMedianTimePast() >= HardForkTime;
+        }
 	bool  mineBlock(CBlock *pblock, const CChainParams& chainparams,uint256 & txhash)
         {
             CMutableTransaction txCoinbase(*pblock->vtx[0]);
@@ -107,9 +115,19 @@
             pblock->nNonce = 0;
             while (!CheckProofOfWork(pblock->GetHash(), pblock->nBits, chainparams.GetConsensus())) ++pblock->nNonce;
             std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(*pblock);
+            int prevHeight =  chainActive.Height();
+            std::cout << "height:" << chainActive.Height() << "\n";
             bool ret = ProcessNewBlock(chainparams, shared_pblock, true, NULL);
+            // blocks of erroneous size produce internally a CValidationState.DoS with msg:
+            // bad-blk-length / size limits failed
+	    //  However this is not propagated to ProcessNewBlock (the reason is unclear to me)
+            // so we must use the blockchain height as an indicator of success
+            if (ret) ret = chainActive.Height()>prevHeight;
             if (ret)
+            {
+               pblock->vtx.resize(1); // start with just coinbase
                pblock->hashPrevBlock = pblock->GetHash();
+            }
             return ret;
         }
 //
@@ -125,13 +143,13 @@
 	    
 	    LOCK(cs_main);
 	   
-	    CBlock *pblock2;
-	    int nBlocks = 435;
+	    CBlock *pblock2= NULL;
+	    int nBlocks = 432;
             uint256 txhash ;
             std::vector<uint256> spend;
 	    for(int i=0;i<nBlocks;i++)
 	    {
-		if ((i % chainparams.GetConsensus().nSubsidyHalvingInterval)==0)
+		if ((i==0) || (((i+1) % chainparams.GetConsensus().nSubsidyHalvingInterval)==0))
 	        { 
                  BOOST_CHECK(pblocktemplate2 = AssemblerForTest(chainparams).CreateNewBlock(scriptPubKey));
 	         pblock2 = &pblocktemplate2->block;
@@ -139,7 +157,7 @@
 	         pblock2->nVersion = 0x20000000 | VersionBitsMask(chainparams.GetConsensus(),Consensus::DEPLOYMENT_SEGWIT_AND_2MB_BLOCKS);   
                 }
                 bool isWitnessEnabled  = IsWitnessEnabled(chainActive.Tip(),chainparams.GetConsensus());
-                if (i<431) 
+                if (i<=430) 
                    BOOST_CHECK(!isWitnessEnabled);
                 else
                    BOOST_CHECK(isWitnessEnabled);
@@ -158,29 +176,36 @@
 
              BOOST_CHECK(!Is2MbBlocksEnabled(chainActive.Tip(),chainparams.GetConsensus()));
              CBlock *pblock = &pblocktemplate->block;
+             pblock->hashPrevBlock = pblock2->hashPrevBlock;
              int64_t HardForkTime =chainparams.GetConsensus().HardForkTime;
-             BOOST_CHECK(pblock2->nTime<HardForkTime);
+             //fPrintToConsole = true;
+	     BOOST_CHECK(pblock2->nTime<HardForkTime);
              int cn = 101;  // after maturity
+
              // Before fork time...
              BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime-10, Megabyte,spend[cn++])); // 1MB : valid
-             BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime-9, Megabyte,spend[cn++])); // 1MB : valid
              BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime-9, Megabyte+1,spend[cn++])); // >1MB : invalid
-             BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime-8, 2*Megabyte,spend[cn++])); // 2MB : invalid
+
              // Exactly at fork time  and afterwards (without segwit2mb activation)...
              BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime, Megabyte,spend[cn++])); // 1MB : valid
              BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime, 2*Megabyte,spend[cn++])); // 2MB : invalid
-             BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime, 2*Megabyte+1,spend[cn++])); // >2MB : invalid
 
-             // The fork is activated when a previous block has time >= HardForkTime, so we need to
-             // mine such a block 
-             pblock2->nTime =HardForkTime;
-             SetMockTime(pblock2->nTime);
-             BOOST_CHECK(mineBlock(pblock2,chainparams,txhash));
-
-             // Before fork time, but after the hard-fork has been locked in
-             BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime-1, Megabyte,spend[cn++])); // 1MB : valid
-             BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime-1, 2*Megabyte,spend[cn++])); // 2MB : valid
-             BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime-1, 2*Megabyte+1,spend[cn++])); // >2MB : invali`d
+             // The fork is activated when a previous block has MedianTime >= HardForkTime, so we need to
+             // mine about 11 blocks.
+             pblock2->hashPrevBlock = pblock->hashPrevBlock;
+             for(int h=0;h<11;h++) {
+               pblock2->nTime =HardForkTime+h;
+               SetMockTime(pblock2->nTime);
+               BOOST_CHECK(mineBlock(pblock2,chainparams,txhash));
+             }
+             pblock->hashPrevBlock = pblock2->hashPrevBlock;
+             
+             BOOST_CHECK(Is2MbBlocksEnabled(chainActive.Tip(),chainparams.GetConsensus()));
+             
+             // after the hard-fork has been locked in
+             BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime+20, Megabyte,spend[cn++])); // 1MB : valid
+             BOOST_CHECK(TestCheckBlock(*pblock, chainparams,HardForkTime+21, 2*Megabyte,spend[cn++])); // 2MB : valid
+             BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime+22, 2*Megabyte+1,spend[cn++])); // >2MB : invali`d
     
              // Fork height + 10 min...
               BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,HardForkTime+600, 2*Megabyte+20,spend[cn++])); // 2MB+20 : invalid
@@ -192,47 +217,6 @@
               BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,yearAfter, 2*Megabyte+1,spend[cn++])); // >2MB : invalid
               BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,yearAfter, 3*Megabyte,spend[cn++])); // 3MB : invalid
               BOOST_CHECK(!TestCheckBlock(*pblock, chainparams,yearAfter, 4*Megabyte,spend[cn++])); // 4MB : invalid
-}
-
-static bool TestCheckBlock2(CBlock& block, const CChainParams& params, uint64_t nTime, unsigned int nSize)
-{
-    SetMockTime(nTime);
-    block.nTime = nTime;
-    FillBlock(block, nSize,block.vtx[0]->GetHash());
-    CValidationState validationState;
-    bool fResult = CheckBlock(block, validationState, params.GetConsensus(),false, false) && validationState.IsValid();
-    SetMockTime(0);
-    return fResult;
-}
-
-//
-// Unit test CheckBlock() for conditions around the block size hard fork
-//
-BOOST_AUTO_TEST_CASE(NoSegwit2MbActivation)
-{
-    const CChainParams& chainparams = Params(CBaseChainParams::MAIN);
-    CScript scriptPubKey = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-    std::unique_ptr<CBlockTemplate> pblocktemplate;
-
-    LOCK(cs_main);
-
-    BOOST_CHECK(pblocktemplate = AssemblerForTest(chainparams).CreateNewBlock(scriptPubKey));
-    CBlock *pblock = &pblocktemplate->block;
-
-    int64_t HardForkTime =chainparams.GetConsensus().HardForkTime;
-    
-    // Before fork time...
-    BOOST_CHECK(TestCheckBlock2(*pblock, chainparams,HardForkTime-1, Megabyte)); // 1MB : valid
-    BOOST_CHECK(!TestCheckBlock2(*pblock, chainparams,HardForkTime-1, Megabyte+1)); // >1MB : invalid
-    BOOST_CHECK(!TestCheckBlock2(*pblock, chainparams,HardForkTime-1, 2*Megabyte)); // 2MB : invalid
-
-    // Exactly at fork time (without segwit2mb activation)...
-    BOOST_CHECK(TestCheckBlock2(*pblock, chainparams,HardForkTime, Megabyte)); // 1MB : valid
-    BOOST_CHECK(TestCheckBlock2(*pblock, chainparams,HardForkTime, 2*Megabyte)); // 2MB : valid
-    BOOST_CHECK(!TestCheckBlock2(*pblock, chainparams,HardForkTime, 2*Megabyte+1)); // >2MB : invalid
-    
-    // Fork height + 10 min...
-    BOOST_CHECK(!TestCheckBlock2(*pblock, chainparams,HardForkTime+600, 2*Megabyte)); // 2MB: invalid
 }
 
 BOOST_AUTO_TEST_SUITE_END()
