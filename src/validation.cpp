@@ -1710,31 +1710,19 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
-unsigned int MaxBlockSize(const CBlockIndex* pindex,const Consensus::Params& consensusParams) {
-    if (Is2MbBlocksEnabled(pindex->pprev, consensusParams))
+unsigned int MaxBlockSize(const CBlockIndex* pindexPrev, const Consensus::Params& consensusParams) {
+    if (Is2MbBlocksEnabled(pindexPrev, consensusParams))
 	return MAX_BLOCK2_BASE_SIZE;
     else
 	return MAX_BLOCK1_BASE_SIZE;
 }
 
-unsigned int MaxBlockWeight(const CBlockIndex* pindex,const Consensus::Params& consensusParams) {
-    if (Is2MbBlocksEnabled(pindex->pprev, consensusParams))
-	return MAX_BLOCK2_WEIGHT;
-    else
-	return MAX_BLOCK1_WEIGHT;
-}
-
-unsigned int MaxBlockSigopsCost(const CBlockIndex* pindex,const Consensus::Params& consensusParams) {
-    if (Is2MbBlocksEnabled(pindex->pprev, consensusParams))
+unsigned int MaxBlockSigopsCost(const CBlockIndex* pindexPrev,const Consensus::Params& consensusParams) {
+    if (Is2MbBlocksEnabled(pindexPrev, consensusParams))
 	return MAX_BLOCK2_SIGOPS_COST;
     else
 	return MAX_BLOCK1_SIGOPS_COST;
 }
-
-unsigned int MaxBlockSigops(const CBlockIndex* pindex,const Consensus::Params& consensusParams) {
-    return MaxBlockSigopsCost(pindex,consensusParams)/WITNESS_SCALE_FACTOR;
-}
-
 
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex,
                   CCoinsViewCache& view, const CChainParams& chainparams, bool fJustCheck)
@@ -1750,9 +1738,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!CheckBlock(block, state, chainparams.GetConsensus(), !fJustCheck, !fJustCheck))
         return error("%s: Consensus::CheckBlock: %s", __func__, FormatStateMessage(state));
 
-    if (!CheckMaxBlockSigops(block, pindex, state, chainparams.GetConsensus()))
-	return error("%s: Consensus::CheckBlock: %s", __func__, FormatStateMessage(state));
-
     // verify that the view's current state corresponds to the previous block
     uint256 hashPrevBlock = pindex->pprev == NULL ? uint256() : pindex->pprev->GetBlockHash();
     assert(hashPrevBlock == view.GetBestBlock());
@@ -1765,11 +1750,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         return true;
     }
     
-    // New Size limits
-    unsigned int maxBlockSize =  MaxBlockSize(pindex,chainparams.GetConsensus());
-    if (block.vtx.empty() || block.vtx.size() > maxBlockSize || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) > maxBlockSize)
-        return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
-
 	 
     bool fScriptChecks = true;
     if (!hashAssumeValid.IsNull()) {
@@ -1890,7 +1870,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!tx.IsCoinBase())
         {
             if (!view.HaveInputs(tx))
-                return state.DoS(100, error("ConnectBlock(): inputs missing/spent"),
+                return state.DoS(100, error("ConnectBlock(): inputs missing/spent: tx=%s index=%d",tx.GetHash().GetHex(),i),
                                  REJECT_INVALID, "bad-txns-inputs-missingorspent");
 
             // Check that transaction is BIP68 final
@@ -1912,7 +1892,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // * p2sh (when P2SH enabled in flags and excludes coinbase)
         // * witness (when witness enabled in flags and excludes coinbase)
         nSigOpsCost += GetTransactionSigOpCost(tx, view, flags);
-        if (nSigOpsCost > MaxBlockSigopsCost(pindex,chainparams.GetConsensus()))
+        if (nSigOpsCost > MaxBlockSigopsCost(pindex->pprev,chainparams.GetConsensus()))
             return state.DoS(100, error("ConnectBlock(): too many sigops"),
                              REJECT_INVALID, "bad-blk-sigops");
 
@@ -2904,7 +2884,7 @@ bool CheckBlock(const CBlock& block, CValidationState& state, const Consensus::P
     return true;
 }
 
-bool CheckMaxBlockSigops(const CBlock& block, const CBlockIndex* pindex, CValidationState& state, const Consensus::Params& consensusParams)
+bool CheckMaxBlockSigops(const CBlock& block, const CBlockIndex* pindexPrev, const Consensus::Params& consensusParams)
 {
  
     unsigned int nSigOps = 0;
@@ -2914,8 +2894,8 @@ bool CheckMaxBlockSigops(const CBlock& block, const CBlockIndex* pindex, CValida
     }
     // The maximum number of sigops now depends on the block height
     // so it will be checked in ConnectBlock only
-    if (nSigOps * WITNESS_SCALE_FACTOR > MaxBlockSigopsCost(pindex,consensusParams))
-       return state.DoS(100, false, REJECT_INVALID, "bad-blk-sigops", false, "out-of-bounds SigOpCount");
+    if (nSigOps * WITNESS_SCALE_FACTOR > MaxBlockSigopsCost(pindexPrev, consensusParams))
+       return false;
     return true;
 }
 
@@ -3077,6 +3057,14 @@ bool ContextualCheckBlock(const CBlock& block, CValidationState& state, const Co
             return state.DoS(10, false, REJECT_INVALID, "bad-txns-nonfinal", false, "non-final transaction");
         }
     }
+
+    if (!CheckMaxBlockSigops(block, pindexPrev, consensusParams))
+        return state.DoS(100, false, REJECT_INVALID, "bad-blk-sigops", false, "out-of-bounds SigOpCount");
+
+    // New Size limits
+    unsigned int maxBlockSize =  MaxBlockSize(pindexPrev, consensusParams);
+    if (block.vtx.empty() || block.vtx.size() > maxBlockSize || ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) > maxBlockSize)
+        return state.DoS(100, false, REJECT_INVALID, "bad-blk-length", false, "size limits failed");
 
     // Enforce rule that the coinbase starts with serialized block height
     if (nHeight >= consensusParams.BIP34Height)

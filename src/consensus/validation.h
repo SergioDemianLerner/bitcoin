@@ -7,7 +7,8 @@
 #define BITCOIN_CONSENSUS_VALIDATION_H
 
 #include <string>
-
+#include <iostream>
+#include "util.h"
 /** "reject" message codes */
 static const unsigned char REJECT_MALFORMED = 0x01;
 static const unsigned char REJECT_INVALID = 0x10;
@@ -45,6 +46,7 @@ public:
             return ret;
         nDoS += level;
         mode = MODE_INVALID;
+        if (fPrintToConsole ) std::cout << "ValidationError (DoS): " << strRejectReason << " / " << strDebugMessage << "\n";
         return ret;
     }
     bool Invalid(bool ret = false,
@@ -56,6 +58,7 @@ public:
         if (mode == MODE_VALID)
             strRejectReason = strRejectReasonIn;
         mode = MODE_ERROR;
+          if (fPrintToConsole ) std::cout << "ValidationError: " << strRejectReason << "\n"; 
         return false;
     }
     bool IsValid() const {
