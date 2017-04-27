@@ -560,7 +560,8 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
     pblock->nNonce = 0;
 
     // NOTE: If at some point we support pre-segwit miners post-segwit-activation, this needs to take segwit support into consideration
-    const bool fPreSegWit =  !IsWitnessEnabled(pindexPrev, consensusParams);
+    const bool fPreSegWit = !IsWitnessEnabled(pindexPrev, consensusParams);
+    const bool fPre2MbBlock = !Is2MbBlocksEnabled(pindexPrev, consensusParams);
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
@@ -684,11 +685,17 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         nSigOpLimit = MAX_BLOCK1_SIGOPS_COST;
         assert(nSigOpLimit % WITNESS_SCALE_FACTOR == 0);
         nSigOpLimit /= WITNESS_SCALE_FACTOR;
-    } else
-	nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
+    } else if (fPre2MbBlock) {
+        nSigOpLimit = MAX_BLOCK1_SIGOPS_COST;
+    } else {
+        nSigOpLimit = MAX_BLOCK_SIGOPS_COST;
+    }
     result.push_back(Pair("sigoplimit", nSigOpLimit));
     if (fPreSegWit) {
         result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK1_BASE_SIZE));
+    } else if (fPre2MbBlock) {
+        result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK1_SERIALIZED_SIZE));
+        result.push_back(Pair("weightlimit", (int64_t)MAX_BLOCK1_WEIGHT));
     } else {
         result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SERIALIZED_SIZE));
         result.push_back(Pair("weightlimit", (int64_t)MAX_BLOCK_WEIGHT));

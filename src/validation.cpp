@@ -1712,16 +1712,16 @@ static int64_t nTimeTotal = 0;
 
 unsigned int MaxBlockSize(const CBlockIndex* pindexPrev, const Consensus::Params& consensusParams) {
     if (Is2MbBlocksEnabled(pindexPrev, consensusParams))
-	return MAX_BLOCK2_BASE_SIZE;
+        return MAX_BLOCK2_BASE_SIZE;
     else
-	return MAX_BLOCK1_BASE_SIZE;
+        return MAX_BLOCK1_BASE_SIZE;
 }
 
 unsigned int MaxBlockSigopsCost(const CBlockIndex* pindexPrev,const Consensus::Params& consensusParams) {
     if (Is2MbBlocksEnabled(pindexPrev, consensusParams))
-	return MAX_BLOCK2_SIGOPS_COST;
+        return MAX_BLOCK2_SIGOPS_COST;
     else
-	return MAX_BLOCK1_SIGOPS_COST;
+        return MAX_BLOCK1_SIGOPS_COST;
 }
 
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex,
@@ -3119,7 +3119,11 @@ bool ContextualCheckBlock(const CBlock& block, CValidationState& state, const Co
     // large by filling up the coinbase witness, which doesn't change
     // the block hash, so we couldn't mark the block as permanently
     // failed).
-    if (GetBlockWeight(block) > MAX_BLOCK_WEIGHT) {
+    // We should also check whether it is before or after the 2mb fork
+    const bool fHave2MbBlock = Is2MbBlocksEnabled(pindexPrev, consensusParams);
+    const int64_t maxBlockWeight = fHave2MbBlock ? MAX_BLOCK_WEIGHT : MAX_BLOCK1_WEIGHT;
+
+    if (GetBlockWeight(block) > maxBlockWeight) {
         return state.DoS(100, false, REJECT_INVALID, "bad-blk-weight", false, strprintf("%s : weight limit failed", __func__));
     }
 

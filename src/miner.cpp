@@ -87,25 +87,25 @@ BlockAssembler::BlockAssembler(const CChainParams& params, const Options& option
     
     // Unless specifically expanded by options, block created will be compliant with 1Mb blocks (not 2Mb blocks)
     // This is to prevent any human mistake by wrongly setting the mining switches before the 2Mb fork actually takes place.
-    if (options.nBlockSizeLimit>=2) {
-	    // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
-	    nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_WEIGHT - 4000, options.nBlockMaxWeight));
-	    // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
-	    nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
-	    // Whether we need to account for byte usage (in addition to weight usage)
-	    fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK_SERIALIZED_SIZE - 1000);
-	    // Limit the number of sigops cost
-	    nBlockMaxSigopsCost = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_SIGOPS_COST, options.nBlockMaxSigopsCost));
+    if (options.nBlockSizeLimit >= 2) {
+        // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
+        nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_WEIGHT - 4000, options.nBlockMaxWeight));
+        // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
+        nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
+        // Whether we need to account for byte usage (in addition to weight usage)
+        fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK_SERIALIZED_SIZE - 1000);
+        // Limit the number of sigops cost
+        nBlockMaxSigopsCost = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK_SIGOPS_COST, options.nBlockMaxSigopsCost));
 
-    } else
-    {      // For 1Mb blocks, use 1Mb restrictions
-	    // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
-	    nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK1_WEIGHT - 4000, options.nBlockMaxWeight));
-	    // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
-	    nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK1_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
-	    // Whether we need to account for byte usage (in addition to weight usage)
-	    fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK1_SERIALIZED_SIZE - 1000);
-	    nBlockMaxSigopsCost = MAX_BLOCK1_SIGOPS_COST;
+    } else {
+        // For 1Mb blocks, use 1Mb restrictions
+        // Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:
+        nBlockMaxWeight = std::max<size_t>(4000, std::min<size_t>(MAX_BLOCK1_WEIGHT - 4000, options.nBlockMaxWeight));
+        // Limit size to between 1K and MAX_BLOCK_SERIALIZED_SIZE-1K for sanity:
+        nBlockMaxSize = std::max<size_t>(1000, std::min<size_t>(MAX_BLOCK1_SERIALIZED_SIZE - 1000, options.nBlockMaxSize));
+        // Whether we need to account for byte usage (in addition to weight usage)
+        fNeedSizeAccounting = (nBlockMaxSize < MAX_BLOCK1_SERIALIZED_SIZE - 1000);
+        nBlockMaxSigopsCost = MAX_BLOCK1_SIGOPS_COST;
     }
 }
 
